@@ -25,6 +25,35 @@ public enum AuthenticatorError: Error, Hashable {
 	case parRequestURIMissing
 	case stateTokenMismatch(String, String)
 	case pkceRequired
+	case codeChallengeAlreadyUsed
+	case unrecognizedError(String)
+}
+
+extension AuthenticatorError: LocalizedError {
+	public var errorDescription: String? {
+		switch self {
+		case .missingScheme: "Missing scheme"
+		case .missingAuthorizationCode: "Missing authorization code"
+		case .missingTokenURL: "Missing token URL"
+		case .missingAuthorizationURL: "Missing authorization URL"
+		case .refreshUnsupported: "Refresh unsupported"
+		case .refreshNotPossible: "Refresh not possible"
+		case .tokenInvalid: "Token invalid"
+		case .manualAuthenticationRequired: "Manual authentication required"
+		case .httpResponseExpected: "HTTP response expected"
+		case .unauthorizedRefreshFailed: "Unauthorized refresh failed"
+		case .missingRedirectURI: "Missing redirect URI"
+		case .missingRefreshToken: "Missing refresh token"
+		case .missingScope: "Missing scope"
+		case .failingAuthenticatorUsed: "Failing authenticator used"
+		case .dpopTokenExpected(let detail): "DPOP token expected: \(detail)"
+		case .parRequestURIMissing: "PAR request URI missing"
+		case .stateTokenMismatch(let first, let second): "State token mismatch, \(first), \(second)"
+		case .pkceRequired: "PKCE required"
+		case .codeChallengeAlreadyUsed: "Code challenge already used"
+		case .unrecognizedError(let description): "Unrecognized error: \(description)"
+	}
+	}
 }
 
 /// Manage state required to executed authenticated URLRequests.
