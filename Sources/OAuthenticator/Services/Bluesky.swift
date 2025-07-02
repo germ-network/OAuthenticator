@@ -49,6 +49,16 @@ public enum Bluesky {
 			)
 		}
 	}
+	
+	struct TokenError: Hashable, Sendable, Codable {
+		let error: String
+		let errorDescription: String
+		
+		enum CodingKeys: String, CodingKey {
+			case error
+			case errorDescription = "error_description"
+		}
+	}
 
 	public static func tokenHandling(
 		account: String?,
@@ -130,6 +140,13 @@ public enum Bluesky {
 
 			print("data:", String(decoding: data, as: UTF8.self))
 			print("response:", response)
+			
+			if let tokenError = try? JSONDecoder().decode(TokenError.self, from: data) {
+				if tokenError.errorDescription == "Code challenge already used" {
+					throw AuthenticatorError.codeChallengeAlreadyUsed
+				}
+				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
+			}
 
 			let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
 
