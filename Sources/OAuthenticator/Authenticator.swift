@@ -19,7 +19,6 @@ public enum AuthenticatorError: Error, Hashable {
 	case dpopTokenExpected(String)
 	case parRequestURIMissing
 	case stateTokenMismatch(String, String)
-	case pkceRequired
 	case codeChallengeAlreadyUsed
 	case unrecognizedError(String)
 }
@@ -44,7 +43,6 @@ extension AuthenticatorError: LocalizedError {
 		case .dpopTokenExpected(let detail): "DPOP token expected: \(detail)"
 		case .parRequestURIMissing: "PAR request URI missing"
 		case .stateTokenMismatch(let first, let second): "State token mismatch, \(first), \(second)"
-		case .pkceRequired: "PKCE required"
 		case .codeChallengeAlreadyUsed: "Code challenge already used"
 		case .unrecognizedError(let description): "Unrecognized error: \(description)"
 		}
