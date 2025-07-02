@@ -75,6 +75,7 @@ public enum Bluesky {
 
 	public typealias TokenSubscriberValidator = @Sendable (TokenResponse, _ issuer: String) async throws -> Bool
 
+
 	public static func tokenHandling(
 		account: String?,
 		server: ServerMetadata,
