@@ -57,6 +57,16 @@ public enum Bluesky {
 		public var tokenType: String { token_type }
 		public var expiresIn: Int { expires_in }
 	}
+	
+	struct TokenError: Hashable, Sendable, Codable {
+		let error: String
+		let errorDescription: String
+		
+		enum CodingKeys: String, CodingKey {
+			case error
+			case errorDescription = "error_description"
+		}
+	}
 
 	public typealias TokenSubscriberValidator = @Sendable (TokenResponse, _ issuer: String) async throws -> Bool
 
@@ -165,7 +175,17 @@ public enum Bluesky {
 			request.setValue("application/json", forHTTPHeaderField: "Accept")
 			request.httpBody = try JSONEncoder().encode(tokenRequest)
 
-			let (data, _) = try await params.responseProvider(request)
+			let (data, response) = try await params.responseProvider(request)
+
+			print("data:", String(decoding: data, as: UTF8.self))
+			print("response:", response)
+			
+			if let tokenError = try? JSONDecoder().decode(TokenError.self, from: data) {
+				if tokenError.errorDescription == "Code challenge already used" {
+					throw AuthenticatorError.codeChallengeAlreadyUsed
+				}
+				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
+			}
 
 			let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
 
