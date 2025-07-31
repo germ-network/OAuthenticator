@@ -256,12 +256,10 @@ extension Authenticator {
 			}
 
 			if login.accessToken.valid {
-				print("We've got a valid access token")
-				// return login
+				return login
 			}
 
 			if let refreshedLogin = try await refresh(with: login) {
-				print("We've got a valid refreshed login")
 				return refreshedLogin
 			}
 
