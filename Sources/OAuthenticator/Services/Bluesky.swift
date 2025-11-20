@@ -172,13 +172,15 @@ public enum Bluesky {
 				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 
-			let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-
-			guard tokenResponse.token_type == "DPoP" else {
-				throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+			do {
+				let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+				guard tokenResponse.token_type == "DPoP" else {
+					throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+				}
+				return tokenResponse.login(for: iss)
+			} catch {
+				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
 			}
-
-			return tokenResponse.login(for: iss)
 		}
 	}
 
@@ -217,14 +219,23 @@ public enum Bluesky {
 
 				throw AuthenticatorError.refreshNotPossible
 			}
-
-			let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-
-			guard tokenResponse.token_type == "DPoP" else {
-				throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+			
+			if let tokenError = try? JSONDecoder().decode(TokenError.self, from: data) {
+				if tokenError.errorDescription == "Code challenge already used" {
+					throw AuthenticatorError.codeChallengeAlreadyUsed
+				}
+				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 
-			return tokenResponse.login(for: server.issuer)
+			do {
+				let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+				guard tokenResponse.token_type == "DPoP" else {
+					throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+				}
+				return tokenResponse.login(for: server.issuer)
+			} catch {
+				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
+			}
 		}
 	}
 }
