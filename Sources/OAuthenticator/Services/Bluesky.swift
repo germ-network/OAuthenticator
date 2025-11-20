@@ -2,9 +2,14 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import os
 
 /// Find the spec here: https://atproto.com/specs/oauth
 public enum Bluesky {
+	static let logger = Logger(
+		subsystem: "com.germnetwork",
+		category: "BlueskyOAuthenticator")
+	
 	struct TokenRequest: Hashable, Sendable, Codable {
 		public let code: String
 		public let code_verifier: String
@@ -184,6 +189,8 @@ public enum Bluesky {
 				if tokenError.errorDescription == "Code challenge already used" {
 					throw AuthenticatorError.codeChallengeAlreadyUsed
 				}
+				Self.logger.error(
+					"Login error: \(tokenError.errorDescription, privacy: .public)")
 				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 
@@ -199,6 +206,8 @@ public enum Bluesky {
 				
 				return tokenResponse.login(for: iss)
 			} catch {
+				Self.logger.error(
+				  "Error decoding response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
 				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
 			}
 		}
@@ -244,6 +253,8 @@ public enum Bluesky {
 				if tokenError.errorDescription == "Code challenge already used" {
 					throw AuthenticatorError.codeChallengeAlreadyUsed
 				}
+				Self.logger.error(
+					"Login error: \(tokenError.errorDescription, privacy: .public)")
 				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 			
@@ -259,6 +270,8 @@ public enum Bluesky {
 				
 				return tokenResponse.login(for: server.issuer)
 			} catch {
+				Self.logger.error(
+				  "Error decoding response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
 				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
 			}
 		}
