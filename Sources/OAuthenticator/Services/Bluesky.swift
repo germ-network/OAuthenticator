@@ -2,9 +2,14 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import os
 
 /// Find the spec here: https://atproto.com/specs/oauth
 public enum Bluesky {
+	static let logger = Logger(
+		subsystem: "com.germnetwork",
+		category: "BlueskyOAuthenticator")
+	
 	struct TokenRequest: Hashable, Sendable, Codable {
 		public let code: String
 		public let code_verifier: String
@@ -169,16 +174,22 @@ public enum Bluesky {
 				if tokenError.errorDescription == "Code challenge already used" {
 					throw AuthenticatorError.codeChallengeAlreadyUsed
 				}
+				Self.logger.error(
+					"Login error: \(tokenError.errorDescription, privacy: .public)")
 				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 
-			let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-
-			guard tokenResponse.token_type == "DPoP" else {
-				throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+			do {
+				let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+				guard tokenResponse.token_type == "DPoP" else {
+					throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+				}
+				return tokenResponse.login(for: iss)
+			} catch {
+				Self.logger.error(
+				  "Error decoding response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
+				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
 			}
-
-			return tokenResponse.login(for: iss)
 		}
 	}
 
@@ -217,14 +228,27 @@ public enum Bluesky {
 				
 				throw AuthenticatorError.refreshNotPossible
 			}
-
-			let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-
-			guard tokenResponse.token_type == "DPoP" else {
-				throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+			
+			if let tokenError = try? JSONDecoder().decode(TokenError.self, from: data) {
+				if tokenError.errorDescription == "Code challenge already used" {
+					throw AuthenticatorError.codeChallengeAlreadyUsed
+				}
+				Self.logger.error(
+					"Login error: \(tokenError.errorDescription, privacy: .public)")
+				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 
-			return tokenResponse.login(for: server.issuer)
+			do {
+				let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+				guard tokenResponse.token_type == "DPoP" else {
+					throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+				}
+				return tokenResponse.login(for: server.issuer)
+			} catch {
+				Self.logger.error(
+				  "Error decoding response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
+				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
+			}
 		}
 	}
 }
