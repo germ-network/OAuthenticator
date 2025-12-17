@@ -307,8 +307,12 @@ extension Authenticator {
 
 		do {
 			login = try await task.value
+			// clear the active task once finished, if this is the active task
+			if task == self.activeTokenTask {
+				self.activeTokenTask = nil
+			}
 		} catch {
-			// clear this value on error, but only if has not changed
+			// clear the active task on error, if this is the active task
 			if task == self.activeTokenTask {
 				self.activeTokenTask = nil
 			}
