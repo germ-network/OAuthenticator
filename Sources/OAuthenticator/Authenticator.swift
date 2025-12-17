@@ -219,6 +219,25 @@ public actor Authenticator {
 		return try await dpopResponse(for: authedRequest, login: login)
 	}
 
+	// TODO: Public func to restore/refresh the session
+	// Restore could take in a full Login object (stored encrypted on MyAnchorManager) and does refresh logic
+	// (Call loginTaskResult)
+	// - Run it every time you open the app
+	// - Don't store failed Logins (like clearing the session cookie if the session restore fails)
+	public func refresh(_ login: Login) async throws {
+		let newLogin = try await loginFromTask(task: Task {
+			guard let value = try await refresh(with: login) else {
+				// TODO: Catch refresh failures and show an alert (you need to reauth)
+				// Will need to handle (1) session expired, and (2) session has been actively revoked by the user
+				// (i.e. in my.pds.com/account) -> btw, (2) is helpful for test plans since (1) is hard to manually do
+				// Clear session you had, maybe keep the DID/handle for a login hint for next time
+				throw AuthenticatorError.unauthorizedRefreshFailed
+			}
+
+			return value
+		})
+	}
+	
 	/// Manually perform user authentication, if required.
 	public func authenticate(with userAuthenticator: UserAuthenticator? = nil) async throws {
 		let _ = try await loginTaskResult(manual: true, userAuthenticator: userAuthenticator ?? config.userAuthenticator)
