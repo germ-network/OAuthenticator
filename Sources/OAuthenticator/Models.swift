@@ -41,11 +41,11 @@ public struct Login: Codable, Hashable, Sendable {
 	public var accessToken: Token
 	public var refreshToken: Token?
 
-    // User authorized scopes
-    public var scopes: String?
+  // User authorized scopes
+  public var scopes: String?
 	public var issuingServer: String?
 
-    public init(accessToken: Token, refreshToken: Token? = nil, scopes: String? = nil, issuingServer: String? = nil) {
+  public init(accessToken: Token, refreshToken: Token? = nil, scopes: String? = nil, issuingServer: String? = nil) {
 		self.accessToken = accessToken
 		self.refreshToken = refreshToken
 		self.scopes = scopes
@@ -108,7 +108,7 @@ public struct PARConfiguration: Hashable, Sendable {
 	}
 }
 
-public struct TokenHandling {
+public struct TokenHandling: Sendable {
 	public enum ResponseStatus: Hashable, Sendable {
 		case valid
 		case refresh
@@ -131,6 +131,22 @@ public struct TokenHandling {
 		public let responseProvider: URLResponseProvider
 		public let stateToken: String
 		public let pcke: PKCEVerifier?
+
+		public init(
+			authorizationURL: URL,
+			credentials: AppCredentials,
+			redirectURL: URL,
+			responseProvider: @escaping URLResponseProvider,
+			stateToken: String,
+			pcke: PKCEVerifier?
+		) {
+			self.authorizationURL = authorizationURL
+			self.credentials = credentials
+			self.redirectURL = redirectURL
+			self.responseProvider = responseProvider
+			self.stateToken = stateToken
+			self.pcke = pcke
+		}
 	}
 
 	/// The output of this is a URL suitable for user authentication in a browser.
