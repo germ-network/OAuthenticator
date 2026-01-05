@@ -53,6 +53,7 @@ extension AuthenticatorError: LocalizedError {
 		case .pkceRequired: "PKCE required"
 		case .codeChallengeAlreadyUsed: "Code challenge already used"
 		case .unrecognizedError(let description): "Unrecognized error: \(description)"
+		case .issuingServerMismatch(let first, let second): "Issuing server mismatch, \(first), \(second)"
 	}
 	}
 }
