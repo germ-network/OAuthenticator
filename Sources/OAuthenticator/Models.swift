@@ -38,14 +38,22 @@ public struct Token: Codable, Hashable, Sendable {
 }
 
 public struct Login: Codable, Hashable, Sendable {
+	public var did: String?
 	public var accessToken: Token
 	public var refreshToken: Token?
 
-  // User authorized scopes
-  public var scopes: String?
+	// User authorized scopes
+	public var scopes: String?
 	public var issuingServer: String?
 
-  public init(accessToken: Token, refreshToken: Token? = nil, scopes: String? = nil, issuingServer: String? = nil) {
+	public init(
+		did: String? = nil,
+		accessToken: Token,
+		refreshToken: Token? = nil,
+		scopes: String? = nil,
+		issuingServer: String? = nil
+	) {
+		self.did = did
 		self.accessToken = accessToken
 		self.refreshToken = refreshToken
 		self.scopes = scopes
