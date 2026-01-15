@@ -50,11 +50,11 @@ public enum Bluesky {
 
 		public func login(for issuingServer: String) -> Login {
 			Login(
-				did: sub,
 				accessToken: Token(value: access_token, expiresIn: expires_in),
 				refreshToken: refresh_token.map { Token(value: $0) },
 				scopes: scope,
-				issuingServer: issuingServer
+				issuingServer: issuingServer,
+				additionalParams: ["did": sub]
 			)
 		}
 	}
