@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
 	name: "OAuthenticator",
 	platforms: [
-		.macOS(.v10_15),
+		.macOS(.v11),
 		.macCatalyst(.v13),
 		.iOS(.v14),
 		.tvOS(.v13),
