@@ -395,7 +395,6 @@ extension Authenticator {
 		}
 
 		let challenge = pkce.challenge
-		let scopes = config.appCredentials.scopes.joined(separator: " ")
 		let callbackURI = config.appCredentials.callbackURL
 		let clientId = config.appCredentials.clientId
 
@@ -407,7 +406,6 @@ extension Authenticator {
 		let base: [String: String] = [
 			"client_id": clientId,
 			"state": stateToken,
-			"scope": scopes,
 			"response_type": "code",
 			"redirect_uri": callbackURI.absoluteString,
 			"code_challenge": challenge.value,

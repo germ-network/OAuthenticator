@@ -68,19 +68,11 @@ public struct Login: Codable, Hashable, Sendable {
 
 public struct AppCredentials: Codable, Hashable, Sendable {
 	public var clientId: String
-	public var clientPassword: String
-	public var scopes: [String]
 	public var callbackURL: URL
 
-	public init(clientId: String, clientPassword: String, scopes: [String], callbackURL: URL) {
+	public init(clientId: String, callbackURL: URL) {
 		self.clientId = clientId
-		self.clientPassword = clientPassword
-		self.scopes = scopes
 		self.callbackURL = callbackURL
-	}
-
-	public var scopeString: String {
-		return scopes.joined(separator: " ")
 	}
 
 	public var callbackURLScheme: String {

@@ -91,7 +91,6 @@ public enum GitHub {
 			urlBuilder.queryItems = [
 				URLQueryItem(name: "client_id", value: credentials.clientId),
 				URLQueryItem(name: "redirect_uri", value: credentials.callbackURL.absoluteString),
-				URLQueryItem(name: "scope", value: credentials.scopeString),
 			]
 
 			if let state = parameters.state {
@@ -116,7 +115,6 @@ public enum GitHub {
 		urlBuilder.path = "/login/oauth/access_token"
 		urlBuilder.queryItems = [
 			URLQueryItem(name: "client_id", value: appCredentials.clientId),
-			URLQueryItem(name: "client_secret", value: appCredentials.clientPassword),
 			URLQueryItem(name: "redirect_uri", value: appCredentials.callbackURL.absoluteString),
 			URLQueryItem(name: "code", value: code),
 		]

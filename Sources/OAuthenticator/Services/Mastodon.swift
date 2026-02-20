@@ -97,7 +97,6 @@ public struct Mastodon {
 				URLQueryItem(name: Mastodon.clientIDKey, value: credentials.clientId),
 				URLQueryItem(name: Mastodon.redirectURIKey, value: credentials.callbackURL.absoluteString),
 				URLQueryItem(name: Mastodon.responseTypeKey, value: Mastodon.responseTypeCode),
-				URLQueryItem(name: Mastodon.scopeKey, value: credentials.scopeString)
 			]
 
 			guard let url = urlBuilder.url else {
@@ -119,10 +118,8 @@ public struct Mastodon {
 		urlBuilder.queryItems = [
 			URLQueryItem(name: Mastodon.grantTypeKey, value: Mastodon.grantTypeAuthorizationCode),
 			URLQueryItem(name: Mastodon.clientIDKey, value: appCredentials.clientId),
-			URLQueryItem(name: Mastodon.clientSecretKey, value: appCredentials.clientPassword),
 			URLQueryItem(name: Mastodon.redirectURIKey, value: appCredentials.callbackURL.absoluteString),
 			URLQueryItem(name: Mastodon.codeKey, value: code),
-			URLQueryItem(name: Mastodon.scopeKey, value: appCredentials.scopeString)
 		]
 
 		guard let url = urlBuilder.url else {

@@ -99,7 +99,6 @@ public struct GoogleAPI {
 				URLQueryItem(name: GoogleAPI.clientIDKey, value: credentials.clientId),
 				URLQueryItem(name: GoogleAPI.redirectURIKey, value: credentials.callbackURL.absoluteString),
 				URLQueryItem(name: GoogleAPI.responseTypeKey, value: GoogleAPI.responseTypeCode),
-				URLQueryItem(name: GoogleAPI.scopeKey, value: credentials.scopeString),
 				URLQueryItem(name: GoogleAPI.includeGrantedScopeKey, value: String(parameters.includeGrantedScopes))
 			]
 			
@@ -149,10 +148,6 @@ public struct GoogleAPI {
 			URLQueryItem(name: GoogleAPI.scopeKey, value: grantedScope)  // See above for grantedScope explanation
 		]
 		
-		// Add clientSecret if supplied (not empty)
-		if !appCredentials.clientPassword.isEmpty {
-			urlBuilder.queryItems?.append(URLQueryItem(name: GoogleAPI.clientSecretKey, value: appCredentials.clientPassword))
-		}
 
 		guard let url = urlBuilder.url else {
 			throw AuthenticatorError.missingTokenURL

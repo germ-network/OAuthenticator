@@ -99,8 +99,6 @@ extension ClientMetadata {
 
 		return AppCredentials(
 			clientId: clientId,
-			clientPassword: "",
-			scopes: scope.components(separatedBy: " "),
 			callbackURL: url
 		)
 	}

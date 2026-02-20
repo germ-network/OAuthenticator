@@ -38,8 +38,6 @@ final class MockURLResponseProvider: @unchecked Sendable {
 final class AuthenticatorTests: XCTestCase {
 	private static let mockCredentials = AppCredentials(
 		clientId: "abc",
-		clientPassword: "def",
-		scopes: ["123"],
 		callbackURL: URL(string: "my://callback")!
 	)
 

@@ -42,8 +42,6 @@ struct BlueskyTests {
 			authorizationURL: URL(string: "https://server-metadata.test/oauth/authorize")!,
 			credentials: AppCredentials(
 				clientId: "a",
-				clientPassword: "b",
-				scopes: [],
 				callbackURL: URL(string: "app.test://callback")!,
 			),
 			redirectURL: URL(string: "app.test://callback?code=123&state=state&iss=this_is_incorrect")!,
@@ -100,8 +98,6 @@ struct BlueskyTests {
 			authorizationURL: URL(string: "https://server-metadata.test/oauth/authorize")!,
 			credentials: AppCredentials(
 				clientId: "a",
-				clientPassword: "b",
-				scopes: [],
 				callbackURL: URL(string: "app.test://callback")!,
 			),
 			redirectURL: URL(string: "app.test:/callback?code=123&state=state&iss=https://server-metadata.test")!,
