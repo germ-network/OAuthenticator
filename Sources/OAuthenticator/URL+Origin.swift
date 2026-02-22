@@ -20,10 +20,13 @@ extension URL {
 			// throw URLError.relative("Cannot calculate an origin for a relative URL")
 			return nil
 		}
-
-		var origin: String = scheme + "://" + host
+		
+		var originComponents = URLComponents()
+		originComponents.scheme = scheme
+		originComponents.host = host
+		
 		guard let port = self.port else {
-			return origin
+			return originComponents.string
 		}
 
 		let isStandardPort =
@@ -33,9 +36,9 @@ extension URL {
 		let isHttp = insecureSchemes.contains(scheme) || secureSchemes.contains(scheme)
 
 		if (isHttp && !isStandardPort) || !isHttp {
-			origin.append(":" + String(port))
+			originComponents.port = port
 		}
 
-		return origin
+		return originComponents.string
 	}
 }
