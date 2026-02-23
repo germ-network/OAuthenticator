@@ -5,7 +5,7 @@ import Foundation
 #endif
 
 extension URL {
-	var origin: String? {
+	var targetURI: String? {
 		guard
 			let host = self.host,
 			let scheme = self.scheme
@@ -16,6 +16,7 @@ extension URL {
 		var originComponents = URLComponents()
 		originComponents.scheme = scheme
 		originComponents.host = host
+		originComponents.path = self.relativePath
 
 		omitWebDefaultPort(components: &originComponents, port: self.port, scheme: scheme)
 

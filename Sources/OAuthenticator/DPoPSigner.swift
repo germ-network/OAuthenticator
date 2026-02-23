@@ -161,18 +161,23 @@ extension DPoPSigner {
 	) async throws {
 		guard
 			let method = request.httpMethod,
-			let url = request.url
+			let targetURI = request.url?.targetURI
 		else {
+			throw DPoPError.requestInvalid(request)
+		}
+
+		// Protect against the `tokenHash`` not being supplied but we have a `token`
+		// This is why we really need to calculate the tokenHash internally.
+		if token != nil && tokenHash == nil {
 			throw DPoPError.requestInvalid(request)
 		}
 
 		let params = JWTParameters(
 			keyType: "dpop+jwt",
 			httpMethod: method,
-			// FIXME: This isn't technically correct, `requestEndpoint` is what
-			// becomes the `htu` in the DPoP JWT, it should be the URL without the
+			// `requestEndpoint` is the `htu` in the DPoP JWT, it should be the URL without the
 			// query or hash fragment: https://datatracker.ietf.org/doc/html/rfc9449#section-4.2-4.6
-			requestEndpoint: url.absoluteString,
+			requestEndpoint: targetURI,
 			nonce: nonce,
 			tokenHash: tokenHash
 		)

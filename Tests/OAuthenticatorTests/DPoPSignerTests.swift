@@ -6,10 +6,11 @@ import Testing
 	import FoundationNetworking
 #endif
 
+enum RequestError: Error, Equatable {
+	case tooManyRequests
+}
+
 final class MockResponseProvider: @unchecked Sendable {
-	public enum MockResponseError: Error, Equatable {
-		case tooManyRequests
-	}
 
 	var responses: [Result<(Data, HTTPURLResponse), Error>] = []
 	private(set) var requests: [URLRequest] = []
@@ -22,7 +23,7 @@ final class MockResponseProvider: @unchecked Sendable {
 			requests.append(request)
 
 			if requests.count > responses.count {
-				throw MockResponseError.tooManyRequests
+				throw RequestError.tooManyRequests
 			}
 
 			return try responses[requests.count - 1].get()
@@ -46,18 +47,21 @@ typealias Assertions =
 	@Sendable (
 		_ request: Int,
 		_ parameters: DPoPSigner.JWTParameters,
-		_ loader: MockResponseProvider
+		_ loader: MockResponseProvider?
 	) throws -> Void
 
 func genericJWTGenerator() -> DPoPSigner.JWTGenerator {
 	return { _ in "my_fake_jwt" }
 }
 
-func assertingJWTGenerator(loader: MockResponseProvider, assertions: Assertions?)
+func assertingJWTGenerator(loader: MockResponseProvider?, assertions: Assertions?)
 	-> DPoPSigner.JWTGenerator
 {
 	return { parameters in
-		let req = loader.requests.count
+		var req = 0
+		if let requests = loader?.requests {
+			req = requests.count
+		}
 		debugPrint("Request:", req, "Params:", parameters)
 
 		if let assertions = assertions {
@@ -68,17 +72,38 @@ func assertingJWTGenerator(loader: MockResponseProvider, assertions: Assertions?
 	}
 }
 
+func RequestFor(url: String, method: String = "GET") -> URLRequest {
+	var request = URLRequest(url: URL(string: url)!)
+	request.httpMethod = method
+	return request
+}
+
+struct JWTAssertion {
+	let htu: String
+	let htm: String
+}
+
 struct DPoPSignerTests {
 	@MainActor
 	@Test func basicSignature() async throws {
 		let signer = DPoPSigner()
 
-		var request = URLRequest(url: URL(string: "https://example.com")!)
+		var request = RequestFor(url: "https://resource.example/test")
+		let assertTokenParams = assertingJWTGenerator(
+			loader: nil,
+			assertions: {
+				(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
+
+				#expect(parameters.httpMethod == "GET")
+				#expect(parameters.requestEndpoint == "https://resource.example/test")
+				#expect(parameters.nonce == "test_nonce")
+				#expect(parameters.tokenHash == "token_hash")
+			})
 
 		try await signer.buildProof(
 			&request,
 			isolation: MainActor.shared,
-			using: genericJWTGenerator(),
+			using: assertTokenParams,
 			nonce: "test_nonce",
 			token: "token",
 			tokenHash: "token_hash"
@@ -92,6 +117,120 @@ struct DPoPSignerTests {
 			// platform differences in FoundationNetworking.
 			#expect(headers["DPoP"] == "my_fake_jwt")
 		#endif
+	}
+
+	@MainActor
+	@Test func missingTokenHashThrows() async throws {
+		let signer = DPoPSigner()
+		var request = RequestFor(url: "https://resource.example/test")
+
+		await #expect(throws: DPoPError.requestInvalid(request)) {
+			try await signer.buildProof(
+				&request,
+				isolation: MainActor.shared,
+				using: genericJWTGenerator(),
+				nonce: "test_nonce",
+				token: "token",
+				tokenHash: nil
+			)
+		}
+	}
+
+	@MainActor
+	@Test func withoutParameters() async throws {
+		let signer = DPoPSigner()
+
+		var request = RequestFor(url: "https://resource.example/test")
+		let assertTokenParams = assertingJWTGenerator(
+			loader: nil,
+			assertions: {
+				(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
+
+				#expect(parameters.httpMethod == "GET")
+				#expect(parameters.requestEndpoint == "https://resource.example/test")
+				#expect(parameters.nonce == nil)
+				#expect(parameters.tokenHash == nil)
+			})
+
+		try await signer.buildProof(
+			&request,
+			isolation: MainActor.shared,
+			using: assertTokenParams,
+			nonce: nil,
+			token: nil,
+			tokenHash: nil
+		)
+
+		#expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+		#expect(request.value(forHTTPHeaderField: "DPoP") == "my_fake_jwt")
+	}
+
+	@MainActor
+	@Test(
+		"Correctly constructs the JWTParameters",
+		arguments: zip(
+			[
+				RequestFor(url: "https://example.com/foo/bar/baz.json"),
+				RequestFor(url: "https://example.com/foo.json?query=param"),
+				RequestFor(url: "https://example.com/foo.json#fragment"),
+				RequestFor(url: "https://example.com/foo.json?foo=bar#fragment"),
+				RequestFor(url: "https://example.com/foo?query=param", method: "POST"),
+			],
+			[
+				JWTAssertion(htu: "https://example.com/foo/bar/baz.json", htm: "GET"),
+				JWTAssertion(htu: "https://example.com/foo.json", htm: "GET"),
+				JWTAssertion(htu: "https://example.com/foo.json", htm: "GET"),
+				JWTAssertion(htu: "https://example.com/foo.json", htm: "GET"),
+				JWTAssertion(htu: "https://example.com/foo", htm: "POST"),
+			]))
+	func handlesParameters(inputRequest: URLRequest, expectedParams: JWTAssertion) async throws {
+		var request = inputRequest
+		let signer = DPoPSigner()
+
+		let assertTokenParams = assertingJWTGenerator(
+			loader: nil,
+			assertions: {
+				(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
+
+				debugPrint(parameters, expectedParams)
+
+				#expect(parameters.httpMethod == expectedParams.htm)
+				#expect(parameters.requestEndpoint == expectedParams.htu)
+			})
+
+		try await signer.buildProof(
+			&request,
+			isolation: MainActor.shared,
+			using: assertTokenParams,
+			nonce: "test_nonce",
+			token: "token",
+			tokenHash: "token_hash"
+		)
+
+		#expect(request.value(forHTTPHeaderField: "Authorization") != nil)
+		#expect(request.value(forHTTPHeaderField: "DPoP") != nil)
+	}
+
+	@MainActor
+	@Test func overwritesAuthorization() async throws {
+		// We expect the original request to not be modified:
+		let signer = DPoPSigner()
+		let authorization = "Bearer foo"
+
+		var request = URLRequest(url: URL(string: "https://example.com")!)
+		request.setValue(authorization, forHTTPHeaderField: "Authorization")
+
+		try await signer.buildProof(
+			&request,
+			isolation: MainActor.shared,
+			using: genericJWTGenerator(),
+			nonce: "test_nonce",
+			token: "token",
+			tokenHash: "token_hash"
+		)
+
+		#expect(request.value(forHTTPHeaderField: "Authorization") == "DPoP token")
+		#expect(request.value(forHTTPHeaderField: "DPoP") == "my_fake_jwt")
 	}
 
 	@MainActor
@@ -118,10 +257,8 @@ struct DPoPSignerTests {
 			)
 		}
 
-		let headers = try #require(request.allHTTPHeaderFields)
-
-		#expect(headers["Authorization"] == authorization)
-		#expect(headers["DPoP"] == nil)
+		#expect(request.value(forHTTPHeaderField: "Authorization") == authorization)
+		#expect(request.value(forHTTPHeaderField: "DPoP") == nil)
 	}
 }
 
@@ -210,7 +347,7 @@ struct DPoPSignerRequestTests {
 			using: assertingJWTGenerator(
 				loader: mockLoader,
 				assertions: {
-					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
 					#expect(request == 0)
 					#expect(parameters.nonce == nil)
 				}),
@@ -276,7 +413,7 @@ struct DPoPSignerRequestTests {
 			using: assertingJWTGenerator(
 				loader: mockLoader,
 				assertions: {
-					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
 					if request == 0 {
 						#expect(parameters.nonce == nil)
 					} else if request == 1 {
@@ -345,7 +482,7 @@ struct DPoPSignerRequestTests {
 			using: assertingJWTGenerator(
 				loader: mockLoader,
 				assertions: {
-					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
 					if request == 0 {
 						#expect(parameters.nonce == nil)
 					} else if request == 1 {
@@ -479,17 +616,17 @@ struct DPoPSignerRequestTests {
 		let tokenGenerator = assertingJWTGenerator(
 			loader: mockLoader,
 			assertions: {
-				(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+				(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider?) in
 				if request == 0 {
 					#expect(parameters.nonce == nil)
-					#expect(parameters.requestEndpoint == asRequestUrl.absoluteString)
+					#expect(parameters.requestEndpoint == "https://as.example/oauth/token")
 				} else if request == 1 {
 					#expect(parameters.nonce == "test-as-nonce-1")
-					#expect(parameters.requestEndpoint == asRequestUrl.absoluteString)
+					#expect(parameters.requestEndpoint == "https://as.example/oauth/token")
 				} else if request == 2 {
 					// We don't have a DPoP Nonce for the resource server, because it's a new origin:
 					#expect(parameters.nonce == nil)
-					#expect(parameters.requestEndpoint == rsRequestUrl.absoluteString)
+					#expect(parameters.requestEndpoint == "https://resource.example/")
 				}
 			})
 
