@@ -222,7 +222,9 @@ public enum Bluesky {
 			let (data, response) = try await responseProvider(request)
 
 			// make sure that we got a successful HTTP response
-			guard response.statusCode >= 200 && response.statusCode < 300
+			guard
+				let httpResponse = response as? HTTPURLResponse,
+				httpResponse.statusCode >= 200 && httpResponse.statusCode < 300
 			else {
 				print("data:", String(decoding: data, as: UTF8.self))
 				print("response:", response)

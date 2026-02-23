@@ -17,16 +17,14 @@ public final class NonceValue {
 extension NSCache where KeyType == NSString, ObjectType == NonceValue {
 	subscript(_ url: URL) -> String? {
 		get {
-			let key = url.origin
-			guard let key = key else {
+			guard let key = url.origin else {
 				return nil
 			}
 			let value = object(forKey: key as NSString)
 			return value?.nonce
 		}
 		set {
-			let key = url.origin
-			guard let key = key else {
+			guard let key = url.origin else {
 				return
 			}
 
@@ -81,6 +79,7 @@ public struct DPoPRequestPayload: Codable, Hashable, Sendable {
 }
 
 public enum DPoPError: Error, Equatable {
+	case urlResponseToHttpUrlResponseConversionFailed
 	case requestInvalid(URLRequest)
 }
 
@@ -123,6 +122,7 @@ public final class DPoPSigner {
 
 	public init(nonceDecoder: @escaping NonceDecoder = nonceHeaderDecoder) {
 		self.nonceDecoder = nonceDecoder
+		self.nonceCache.countLimit = 20
 	}
 
 	// Test helper:
@@ -136,6 +136,21 @@ public final class DPoPSigner {
 }
 
 extension DPoPSigner {
+	private func makeRequest(
+		_ request: inout URLRequest,
+		isolation: isolated (any Actor),
+		responseProvider: URLResponseProvider
+	)
+		async throws -> (Data, HTTPURLResponse)
+	{
+		let (data, urlResponse) = try await responseProvider(request)
+		if let httpResponse = urlResponse as? HTTPURLResponse {
+			return (data, httpResponse)
+		} else {
+			throw DPoPError.urlResponseToHttpUrlResponseConversionFailed
+		}
+	}
+
 	public func buildProof(
 		_ request: inout URLRequest,
 		isolation: isolated (any Actor),
@@ -213,7 +228,11 @@ extension DPoPSigner {
 			tokenHash: tokenHash
 		)
 
-		let (data, response) = try await responseProvider(request)
+		let (data, response) = try await makeRequest(
+			&request,
+			isolation: isolation,
+			responseProvider: responseProvider
+		)
 
 		// Extract the next nonce value if any; if we don't have a new nonce, return the response:
 		guard let nextNonce = try nonceDecoder(data, response) else {
@@ -245,7 +264,12 @@ extension DPoPSigner {
 			tokenHash: tokenHash
 		)
 
-		let (retryData, retryResponse) = try await responseProvider(request)
+		let (retryData, retryResponse) = try await makeRequest(
+			&request,
+			isolation: isolation,
+			responseProvider: responseProvider
+		)
+
 		if let retryNonce = try nonceDecoder(retryData, retryResponse) {
 			nonceCache.setObject(retryNonce, forKey: retryNonce.origin as NSString)
 		}

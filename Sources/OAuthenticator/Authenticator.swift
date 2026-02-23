@@ -143,7 +143,7 @@ public actor Authenticator {
 	}()
 
 	/// Add authentication for `request`, execute it, and return its result.
-	public func response(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+	public func response(for request: URLRequest) async throws -> (Data, URLResponse) {
 		let userAuthenticator = config.userAuthenticator
 
 		let login = try await loginTaskResult(manual: false, userAuthenticator: userAuthenticator)
@@ -190,7 +190,7 @@ public actor Authenticator {
 	}
 
 	private func authedResponse(for request: URLRequest, login: Login) async throws -> (
-		Data, HTTPURLResponse
+		Data, URLResponse
 	) {
 		var authedRequest = request
 		let token = login.accessToken.value
@@ -434,7 +434,7 @@ extension Authenticator {
 	}
 
 	private func dpopResponse(for request: URLRequest, login: Login?) async throws -> (
-		Data, HTTPURLResponse
+		Data, URLResponse
 	) {
 		guard let generator = config.tokenHandling.dpopJWTGenerator else {
 			return try await urlLoader(request)

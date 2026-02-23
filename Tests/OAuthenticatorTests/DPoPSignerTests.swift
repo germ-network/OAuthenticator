@@ -10,6 +10,68 @@ struct ExamplePayload: Codable, Hashable, Sendable {
 	let value: String
 }
 
+final class MockResponseProvider: @unchecked Sendable {
+	public enum MockResponseError: Error, Equatable {
+		case tooManyRequests
+	}
+
+	var responses: [Result<(Data, HTTPURLResponse), Error>] = []
+	private(set) var requests: [URLRequest] = []
+	private let lock = NSLock()
+
+	init() {}
+
+	func response(for request: URLRequest) throws -> (Data, HTTPURLResponse) {
+		try lock.withLock {
+			requests.append(request)
+
+			if requests.count > responses.count {
+				throw MockResponseError.tooManyRequests
+			}
+
+			return try responses[requests.count - 1].get()
+		}
+	}
+
+	var allRequested: Bool {
+		return requests.count == responses.count
+	}
+
+	var notAllRequested: Bool {
+		return requests.count < responses.count
+	}
+
+	var responseProvider: URLResponseProvider {
+		return { try self.response(for: $0) }
+	}
+}
+
+typealias Assertions =
+	@Sendable (
+		_ request: Int,
+		_ parameters: DPoPSigner.JWTParameters,
+		_ loader: MockResponseProvider
+	) throws -> Void
+
+func genericJWTGenerator() -> DPoPSigner.JWTGenerator {
+	return { _ in "my_fake_jwt" }
+}
+
+func assertingJWTGenerator(loader: MockResponseProvider, assertions: Assertions?)
+	-> DPoPSigner.JWTGenerator
+{
+	return { parameters in
+		let req = loader.requests.count
+		debugPrint("Request:", req, "Params:", parameters)
+
+		if let assertions = assertions {
+			try assertions(req, parameters, loader)
+		}
+
+		return "my_fake_jwt"
+	}
+}
+
 struct DPoPSignerTests {
 	@MainActor
 	@Test func basicSignature() async throws {
@@ -19,9 +81,9 @@ struct DPoPSignerTests {
 
 		try await signer.buildProof(
 			&request,
-			nonce: "test_nonce",
 			isolation: MainActor.shared,
-			using: { _ in "my_fake_jwt" },
+			using: genericJWTGenerator(),
+			nonce: "test_nonce",
 			token: "token",
 			tokenHash: "token_hash"
 		)
@@ -52,9 +114,9 @@ struct DPoPSignerTests {
 		await #expect(throws: DPoPError.requestInvalid(request)) {
 			try await signer.buildProof(
 				&request,
-				nonce: "test_nonce",
 				isolation: MainActor.shared,
-				using: { _ in "my_fake_jwt" },
+				using: genericJWTGenerator(),
+				nonce: "test_nonce",
 				token: "token",
 				tokenHash: "token_hash"
 			)
@@ -65,7 +127,9 @@ struct DPoPSignerTests {
 		#expect(headers["Authorization"] == authorization)
 		#expect(headers["DPoP"] == nil)
 	}
+}
 
+struct DPoPSignerRequestTests {
 	@MainActor
 	@Test func authorizationResponseSuccess() async throws {
 		let signer = DPoPSigner()
@@ -73,7 +137,7 @@ struct DPoPSignerTests {
 		let requestedURL = URL(string: "https://as.example/oauth/token")!
 		let request = URLRequest(url: requestedURL)
 
-		let mockLoader = MockURLResponseProvider()
+		let mockLoader = MockResponseProvider()
 		let payload = """
 				{"access_token":"1", "sub":"2", "scope":"3", "token_type":"DPoP","expires_in":120}
 			"""
@@ -91,14 +155,14 @@ struct DPoPSignerTests {
 		let (resultData, resultResponse) = try await signer.response(
 			isolation: MainActor.shared,
 			for: request,
-			using: { _ in "my_fake_jwt" },
+			using: assertingJWTGenerator(loader: mockLoader, assertions: nil),
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: "https://as.example",
 			responseProvider: mockLoader.responseProvider
 		)
 
-		#expect(mockLoader.requestCount() == 1)
+		#expect(mockLoader.allRequested)
 
 		let nonce = try #require(
 			signer.testRetrieveNonceForOrigin(url: URL(string: "https://as.example")!)
@@ -110,7 +174,7 @@ struct DPoPSignerTests {
 	}
 
 	@MainActor
-	@Test func resourceResponseWWWAuthFail() async throws {
+	@Test func resourceResponseWWWAuthInvalidRequest() async throws {
 		let signer = DPoPSigner()
 
 		// We are testing that we can make a request against a Resource Server,
@@ -120,7 +184,7 @@ struct DPoPSignerTests {
 		let requestedURL = URL(string: "https://resource.example.com/")!
 		let request = URLRequest(url: requestedURL)
 
-		let mockLoader = MockURLResponseProvider()
+		let mockLoader = MockResponseProvider()
 		let failurePayload = "failed"
 
 		mockLoader.responses = [
@@ -147,25 +211,22 @@ struct DPoPSignerTests {
 		let (resultData, resultResponse) = try await signer.response(
 			isolation: MainActor.shared,
 			for: request,
-			using: { parameters in
-				let req = mockLoader.requestCount()
-				debugPrint(parameters, mockLoader.requestCount())
-
-				if req == 0 {
+			using: assertingJWTGenerator(
+				loader: mockLoader,
+				assertions: {
+					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+					#expect(request == 0)
 					#expect(parameters.nonce == nil)
-				} else if req == 1 {
-					#expect(parameters.nonce == "test-nonce-1")
-				}
-
-				return "my_fake_jwt"
-			},
+				}),
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: issuer,
 			responseProvider: mockLoader.responseProvider
 		)
 
-		#expect(mockLoader.requestCount() == 1)
+		// We don't expect the request to be
+		#expect(mockLoader.notAllRequested)
+		#expect(mockLoader.requests.count == 1)
 
 		let nonce = try #require(
 			signer.testRetrieveNonceForOrigin(url: URL(string: "https://resource.example.com")!)
@@ -187,7 +248,7 @@ struct DPoPSignerTests {
 		let requestedURL = URL(string: "https://resource.example.com/")!
 		let request = URLRequest(url: requestedURL)
 
-		let mockLoader = MockURLResponseProvider()
+		let mockLoader = MockResponseProvider()
 		let payload = """
 				{"access_token":"1", "sub":"2", "scope":"3", "token_type":"DPoP","expires_in":120}
 			"""
@@ -216,24 +277,23 @@ struct DPoPSignerTests {
 		let (resultData, resultResponse) = try await signer.response(
 			isolation: MainActor.shared,
 			for: request,
-			using: { parameters in
-				let req = mockLoader.requestCount()
-				debugPrint(parameters, mockLoader.requestCount())
-
-				if req == 0 {
-					#expect(parameters.nonce == nil)
-				} else if req == 1 {
-					#expect(parameters.nonce == "test-nonce-1")
-				}
-				return "my_fake_jwt"
-			},
+			using: assertingJWTGenerator(
+				loader: mockLoader,
+				assertions: {
+					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+					if request == 0 {
+						#expect(parameters.nonce == nil)
+					} else if request == 1 {
+						#expect(parameters.nonce == "test-nonce-1")
+					}
+				}),
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: issuer,
 			responseProvider: mockLoader.responseProvider
 		)
 
-		#expect(mockLoader.requestCount() == 2)
+		#expect(mockLoader.allRequested)
 
 		let nonce = try #require(
 			signer.testRetrieveNonceForOrigin(url: URL(string: "https://resource.example.com")!)
@@ -256,7 +316,7 @@ struct DPoPSignerTests {
 		let requestedURL = URL(string: "https://as.example/oauth/token")!
 		let request = URLRequest(url: requestedURL)
 
-		let mockLoader = MockURLResponseProvider()
+		let mockLoader = MockResponseProvider()
 		let nonceError = """
 				{ "error": "use_dpop_nonce", "error_description": "Authorization server requires nonce in DPoP proof" }
 			"""
@@ -286,25 +346,23 @@ struct DPoPSignerTests {
 		let (resultData, resultResponse) = try await signer.response(
 			isolation: MainActor.shared,
 			for: request,
-			using: { parameters in
-				let req = mockLoader.requestCount()
-				debugPrint(parameters, mockLoader.requestCount())
-
-				if req == 0 {
-					#expect(parameters.nonce == nil)
-				} else if req == 1 {
-					#expect(parameters.nonce == "test-nonce-1")
-				}
-
-				return "my_fake_jwt"
-			},
+			using: assertingJWTGenerator(
+				loader: mockLoader,
+				assertions: {
+					(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+					if request == 0 {
+						#expect(parameters.nonce == nil)
+					} else if request == 1 {
+						#expect(parameters.nonce == "test-nonce-1")
+					}
+				}),
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: issuer,
 			responseProvider: mockLoader.responseProvider
 		)
 
-		#expect(mockLoader.requestCount() == 2)
+		#expect(mockLoader.allRequested)
 
 		let nonce = try #require(
 			signer.testRetrieveNonceForOrigin(url: URL(string: issuer)!)
@@ -327,7 +385,7 @@ struct DPoPSignerTests {
 		let requestedURL = URL(string: "https://as.example/oauth/token")!
 		let request = URLRequest(url: requestedURL)
 
-		let mockLoader = MockURLResponseProvider()
+		let mockLoader = MockResponseProvider()
 		let oauthError = """
 				{ "error": "invalid_request", "error_description": "This request was not valid" }
 			"""
@@ -355,14 +413,15 @@ struct DPoPSignerTests {
 		let (resultData, resultResponse) = try await signer.response(
 			isolation: MainActor.shared,
 			for: request,
-			using: { parameters in "my_fake_jwt" },
+			using: genericJWTGenerator(),
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: issuer,
 			responseProvider: mockLoader.responseProvider
 		)
 
-		#expect(mockLoader.requestCount() == 1)
+		#expect(mockLoader.notAllRequested)
+		#expect(mockLoader.requests.count == 1)
 
 		let nonce = try #require(
 			signer.testRetrieveNonceForOrigin(url: URL(string: issuer)!)
@@ -387,7 +446,7 @@ struct DPoPSignerTests {
 		let rsRequestUrl = URL(string: "https://resource.example/")!
 		let rsRequest = URLRequest(url: rsRequestUrl)
 
-		let mockLoader = MockURLResponseProvider()
+		let mockLoader = MockResponseProvider()
 		let nonceError = """
 				{ "error": "use_dpop_nonce", "error_description": "Authorization server requires nonce in DPoP proof" }
 			"""
@@ -421,22 +480,27 @@ struct DPoPSignerTests {
 				)),
 		]
 
+		let tokenGenerator = assertingJWTGenerator(
+			loader: mockLoader,
+			assertions: {
+				(request: Int, parameters: DPoPSigner.JWTParameters, loader: MockResponseProvider) in
+				if request == 0 {
+					#expect(parameters.nonce == nil)
+					#expect(parameters.requestEndpoint == asRequestUrl.absoluteString)
+				} else if request == 1 {
+					#expect(parameters.nonce == "test-as-nonce-1")
+					#expect(parameters.requestEndpoint == asRequestUrl.absoluteString)
+				} else if request == 2 {
+					// We don't have a DPoP Nonce for the resource server, because it's a new origin:
+					#expect(parameters.nonce == nil)
+					#expect(parameters.requestEndpoint == rsRequestUrl.absoluteString)
+				}
+			})
+
 		let asResult = try await signer.response(
 			isolation: MainActor.shared,
 			for: asRequest,
-			using: { parameters in
-				debugPrint(parameters, mockLoader.requestCount())
-
-				if mockLoader.requestCount() == 0 {
-					#expect(parameters.nonce == nil)
-					#expect(parameters.requestEndpoint == asRequestUrl.absoluteString)
-				} else {
-					#expect(parameters.nonce == "test-as-nonce-1")
-					#expect(parameters.requestEndpoint == asRequestUrl.absoluteString)
-				}
-
-				return "my_fake_jwt"
-			},
+			using: tokenGenerator,
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: issuer,
@@ -444,7 +508,7 @@ struct DPoPSignerTests {
 		)
 
 		// We retry due to nonce failure:
-		#expect(mockLoader.requestCount() == 2)
+		#expect(mockLoader.requests.count == 2)
 
 		#expect(asResult.1.statusCode == 200)
 		#expect(asResult.0 == Data("authorization server".utf8))
@@ -452,15 +516,7 @@ struct DPoPSignerTests {
 		let rsResult = try await signer.response(
 			isolation: MainActor.shared,
 			for: rsRequest,
-			using: { parameters in
-				debugPrint(parameters, mockLoader.requestCount())
-
-				// We don't have a DPoP Nonce for the resource server, because it's a new origin:
-				#expect(parameters.nonce == nil)
-				#expect(parameters.requestEndpoint == rsRequestUrl.absoluteString)
-
-				return "my_fake_jwt"
-			},
+			using: tokenGenerator,
 			token: "test-token",
 			tokenHash: "test-abc123",
 			issuingServer: issuer,
@@ -470,8 +526,8 @@ struct DPoPSignerTests {
 		#expect(rsResult.1.statusCode == 200)
 		#expect(rsResult.0.elementsEqual("resource server".utf8))
 
-		// We now have the resource server request completed:
-		#expect(mockLoader.requestCount() == 3)
+		// We now have the resource server request completed, so all requests are completed:
+		#expect(mockLoader.allRequested)
 
 		// Check the Authorization Server DPoP-Nonce didn't clobber the Resource
 		// Server DPoP-Nonce:
