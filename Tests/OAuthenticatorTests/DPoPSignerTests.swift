@@ -6,10 +6,6 @@ import Testing
 	import FoundationNetworking
 #endif
 
-struct ExamplePayload: Codable, Hashable, Sendable {
-	let value: String
-}
-
 final class MockResponseProvider: @unchecked Sendable {
 	public enum MockResponseError: Error, Equatable {
 		case tooManyRequests
