@@ -1,12 +1,10 @@
 import Foundation
-
 #if canImport(FoundationNetworking)
-	import FoundationNetworking
+import FoundationNetworking
 #endif
 
 enum URLResponseProviderError: Error {
 	case missingResponseComponents
-	case conversionToHTTPFailed
 }
 
 extension URLSession {
@@ -17,11 +15,7 @@ extension URLSession {
 				let task = self.dataTask(with: request) { data, response, error in
 					switch (data, response, error) {
 					case (let data?, let response?, nil):
-						if let httpResponse = response as? HTTPURLResponse {
-							continuation.resume(returning: (data, httpResponse))
-						} else {
-							continuation.resume(throwing: URLResponseProviderError.conversionToHTTPFailed)
-						}
+						continuation.resume(returning: (data, response))
 					case (_, _, let error?):
 						continuation.resume(throwing: error)
 					case (_, _, nil):
