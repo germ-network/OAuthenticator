@@ -154,6 +154,9 @@ extension DPoPSigner {
 		let params = JWTParameters(
 			keyType: "dpop+jwt",
 			httpMethod: method,
+			// FIXME: This isn't technically correct, `requestEndpoint` is what
+			// becomes the `htu` in the DPoP JWT, it should be the URL without the
+			// query or hash fragment: https://datatracker.ietf.org/doc/html/rfc9449#section-4.2-4.6
 			requestEndpoint: url.absoluteString,
 			nonce: nonce,
 			tokenHash: tokenHash
