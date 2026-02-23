@@ -1,24 +1,24 @@
 import Foundation
-import OAuthenticator
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Testing
 
-#if canImport(FoundationNetworking)
-	import FoundationNetworking
-#endif
+import OAuthenticator
 
 enum AuthenticatorTestsError: Error {
 	case disabled
 }
 
 final class MockURLResponseProvider: @unchecked Sendable {
-	var responses: [Result<(Data, HTTPURLResponse), Error>] = []
+	var responses: [Result<(Data, URLResponse), Error>] = []
 	private(set) var requests: [URLRequest] = []
 	private let lock = NSLock()
 
 	init() {
 	}
 
-	func response(for request: URLRequest) throws -> (Data, HTTPURLResponse) {
+	func response(for request: URLRequest) throws -> (Data, URLResponse) {
 		try lock.withLock {
 			requests.append(request)
 
@@ -26,19 +26,13 @@ final class MockURLResponseProvider: @unchecked Sendable {
 		}
 	}
 
-	func requestCount() -> Int {
-		return requests.count
-	}
-
 	var responseProvider: URLResponseProvider {
 		return { try self.response(for: $0) }
 	}
 
-	static let dummyResponse: (Data, HTTPURLResponse) = (
+	static let dummyResponse: (Data, URLResponse) = (
 		"hello".data(using: .utf8)!,
-		HTTPURLResponse(
-			url: URL(string: "https://test.com")!, mimeType: nil, expectedContentLength: 5,
-			textEncodingName: nil)
+		URLResponse(url: URL(string: "https://test.com")!, mimeType: nil, expectedContentLength: 5, textEncodingName: nil)
 	)
 }
 
@@ -56,16 +50,12 @@ struct AuthenticatorTests {
 	}
 
 	@Sendable
-	private static func disabledAuthorizationURLProvider(
-		parameters: TokenHandling.AuthorizationURLParameters
-	) throws -> URL {
+	private static func disabledAuthorizationURLProvider(parameters: TokenHandling.AuthorizationURLParameters) throws -> URL {
 		throw AuthenticatorTestsError.disabled
 	}
 
 	@Sendable
-	private static func disabledLoginProvider(parameters: TokenHandling.LoginProviderParameters)
-		throws -> Login
-	{
+	private static func disabledLoginProvider(parameters: TokenHandling.LoginProviderParameters) throws -> Login {
 		throw AuthenticatorTestsError.disabled
 	}
 
@@ -282,8 +272,7 @@ struct AuthenticatorTests {
 		let auth = Authenticator(config: config, urlLoader: mockLoader)
 
 		await #expect(throws: AuthenticatorError.refreshNotPossible) {
-			let (_, _) = try await auth.response(
-				for: URLRequest(url: URL(string: "https://example.com")!))
+			let (_, _) = try await auth.response(for: URLRequest(url: URL(string: "https://example.com")!))
 		}
 
 		let events = try await stream.collect(finishing: continuation)
@@ -332,8 +321,7 @@ struct AuthenticatorTests {
 		let auth = Authenticator(config: config, urlLoader: mockLoader)
 
 		await #expect(throws: AuthenticatorError.manualAuthenticationRequired) {
-			let (_, _) = try await auth.response(
-				for: URLRequest(url: URL(string: "https://example.com")!))
+			let (_, _) = try await auth.response(for: URLRequest(url: URL(string: "https://example.com")!))
 		}
 
 		// now we explicitly authenticate, and things should work
@@ -390,7 +378,7 @@ struct AuthenticatorTests {
 		let login = try await auth.authenticate()
 
 		// Ensure our authenticatedLogin objet is available and contains the proper Token
-		#expect(login == Login(token: "TOKEN"))
+		#expect(login == Login(token:"TOKEN"))
 
 		let (_, _) = try await auth.response(for: URLRequest(url: URL(string: "https://example.com")!))
 
@@ -455,16 +443,8 @@ struct AuthenticatorTests {
 		let mockData = "hello".data(using: .utf8)!
 
 		mockLoader.responses = [
-			.success(
-				(
-					Data(),
-					HTTPURLResponse(url: requestedURL, statusCode: 401, httpVersion: nil, headerFields: nil)!
-				)),
-			.success(
-				(
-					mockData,
-					HTTPURLResponse(url: requestedURL, statusCode: 200, httpVersion: nil, headerFields: nil)!
-				)),
+			.success((Data(), HTTPURLResponse(url: requestedURL, statusCode: 401, httpVersion: nil, headerFields: nil)!)),
+			.success((mockData, HTTPURLResponse(url: requestedURL, statusCode: 200, httpVersion: nil, headerFields: nil)!)),
 		]
 
 		let refreshProvider: TokenHandling.RefreshProvider = { login, _, _ in
@@ -565,7 +545,7 @@ struct AuthenticatorTests {
 			"login load",
 			"request",
 			"Bearer EXPIRE SOON",
-			"checkpoint",
+			"checkpoint"
 		]
 		#expect(events1 == expected1)
 
