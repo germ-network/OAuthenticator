@@ -65,7 +65,6 @@ public struct DPoPRequestPayload: Codable, Hashable, Sendable {
 		createdAt: Int,
 		expiresAt: Int,
 		nonce: String,
-		authorizationServerIssuer: String,
 		accessTokenHash: String
 	) {
 		self.uniqueCode = UUID().uuidString
