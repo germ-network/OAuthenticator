@@ -150,7 +150,7 @@ public actor Authenticator {
 
 		switch action {
 		case .authorize:
-			let newLogin = try await loginFrom {
+			let newLogin = try await loginFromInflightOrNew {
 				Task {
 					try await performUserAuthentication(manual: false, userAuthenticator: userAuthenticator)
 				}
@@ -158,7 +158,7 @@ public actor Authenticator {
 
 			return try await authedResponse(for: request, login: newLogin)
 		case .refresh:
-			let newLogin = try await loginFrom {
+			let newLogin = try await loginFromInflightOrNew {
 				Task {
 					guard let value = try await refresh(with: login) else {
 						throw AuthenticatorError.unauthorizedRefreshFailed
@@ -170,7 +170,7 @@ public actor Authenticator {
 
 			return try await authedResponse(for: request, login: newLogin)
 		case .refreshOrAuthorize:
-			let newLogin = try await loginFrom {
+			let newLogin = try await loginFromInflightOrNew {
 				Task {
 					if let value = try await refresh(with: login) {
 						return value
@@ -262,11 +262,11 @@ extension Authenticator {
 		do {
 			do {
 				
-				login = try await loginFrom {
+				login = try await loginFromInflightOrNew {
 					makeLoginTask(manual: manual, userAuthenticator: userAuthenticator)
 				}
 			} catch AuthenticatorError.tokenInvalid {
-				login = try await loginFrom {
+				login = try await loginFromInflightOrNew {
 					makeLoginTask(manual: manual, userAuthenticator: userAuthenticator)
 				}
 			}
@@ -286,7 +286,7 @@ extension Authenticator {
 	//if we already have an active task
 	//this should exit with a nil activeTokenTask so we can retry with a fresh
 	//task
-	private func loginFrom(taskGenerator: () -> Task<Login, Error>) async throws -> Login {
+	private func loginFromInflightOrNew(taskGenerator: () -> Task<Login, Error>) async throws -> Login {
 		if let existingTask = activeTokenTask {
 			return try await existingTask.value
 		} else {
