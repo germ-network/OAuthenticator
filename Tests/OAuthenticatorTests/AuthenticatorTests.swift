@@ -511,19 +511,22 @@ struct AuthenticatorTests {
 			refreshProvider: refreshProvider,
 			responseStatusProvider: TokenHandling.allResponsesValid
 		)
-
-		let storedLogin = Login(
-			accessToken: Token(value: "EXPIRE SOON", expiry: Date().addingTimeInterval(5)),
-			refreshToken: Token(value: "REFRESH")
+		
+		let backingStore = TestLoginStorage(
+			login: .init(
+				accessToken: Token(value: "EXPIRE SOON", expiry: Date().addingTimeInterval(5)),
+				refreshToken: Token(value: "REFRESH")
+			)
 		)
 
 		let storage = LoginStorage {
 			continuation.yield("login load")
 
-			return storedLogin
+			return await backingStore.login
 		} storeLogin: { login in
 			continuation.yield("login save")
 			continuation.yield(login.accessToken.value)
+			await backingStore.save(login: login)
 		} clearLogin: {
 			Issue.record("token should not be cleared")
 		}
@@ -572,9 +575,26 @@ struct AuthenticatorTests {
 
 		let events3 = try await stream.collect(finishing: continuation)
 		let expected3 = [
+			"login load",
 			"request",
 			"Bearer REFRESHED",
 		]
 		#expect(events3 == expected3)
+	}
+}
+
+actor TestLoginStorage {
+	public var login: Login?
+	
+	init(login: Login?) {
+		self.login = login
+	}
+	
+	func save(login: Login) {
+		self.login = login
+	}
+	
+	func clear() {
+		login = nil
 	}
 }
