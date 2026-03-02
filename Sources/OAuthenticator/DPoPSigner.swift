@@ -198,15 +198,10 @@ extension DPoPSigner {
 		// FIXME: Remove and use swift crypto internally to provide sha256, instead
 		// of using pkce.hashFunction in the caller to calculate the tokenHash
 		tokenHash: String?,
-		issuingServer: String?,
+		isAuthServer: Bool?,
 		responseProvider: URLResponseProvider
 	) async throws -> (Data, HTTPURLResponse) {
 		var request = request
-		var issuer: String? = nil
-		if let iss = issuingServer {
-			issuer = URL(string: iss)?.origin
-		}
-
 		// FIXME: calculate tokenHash using the value from the request Authorization
 		// header:
 		//
@@ -252,7 +247,6 @@ extension DPoPSigner {
 		// Store the fresh nonce for future requests
 		nonceCache.setObject(nextNonce, forKey: nextNonce.origin as NSString)
 
-		let isAuthServer = issuer == requestOrigin
 		let shouldRetry = isUseDpopError(data: data, response: response, isAuthServer: isAuthServer)
 		if !shouldRetry {
 			return (data, response)

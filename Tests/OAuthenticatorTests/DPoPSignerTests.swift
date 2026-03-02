@@ -285,7 +285,7 @@ struct DPoPSignerRequestTests {
 			using: assertingJWTGenerator(loader: mockLoader, assertions: nil),
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: "https://as.example",
+			isAuthServer: true,
 			responseProvider: mockLoader.responseProvider
 		)
 
@@ -307,7 +307,6 @@ struct DPoPSignerRequestTests {
 		// We are testing that we can make a request against a Resource Server,
 		// which returns a WWW-Authenticate error due to invalid it being an invalid
 		// request (i.e., not DPoP), upon that error, we don't retry the request.
-		let issuer = "https://as.example"
 		let requestedURL = URL(string: "https://resource.example.com/")!
 		let request = URLRequest(url: requestedURL)
 
@@ -347,7 +346,7 @@ struct DPoPSignerRequestTests {
 				}),
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: issuer,
+			isAuthServer: false,
 			responseProvider: mockLoader.responseProvider
 		)
 
@@ -371,7 +370,6 @@ struct DPoPSignerRequestTests {
 		// We are testing that we can make a request against a Resource Server,
 		// which returns a WWW-Authenticate error due to invalid DPoP Nonce,
 		// upon that error, we retry the request with the given DPoP-Nonce header value.
-		let issuer = "https://as.example"
 		let requestedURL = URL(string: "https://resource.example.com/")!
 		let request = URLRequest(url: requestedURL)
 
@@ -416,7 +414,7 @@ struct DPoPSignerRequestTests {
 				}),
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: issuer,
+			isAuthServer: false,
 			responseProvider: mockLoader.responseProvider
 		)
 
@@ -439,7 +437,6 @@ struct DPoPSignerRequestTests {
 		// which returns a DPoP Error Response body, with a DPoP-Nonce header. The
 		// request is then retried with the supplied DPoP-Nonce header value, and
 		// succeeds.
-		let issuer = "https://as.example"
 		let requestedURL = URL(string: "https://as.example/oauth/token")!
 		let request = URLRequest(url: requestedURL)
 
@@ -485,14 +482,14 @@ struct DPoPSignerRequestTests {
 				}),
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: issuer,
+			isAuthServer: nil,  // this allows either AS or RS logic to apply
 			responseProvider: mockLoader.responseProvider
 		)
 
 		#expect(mockLoader.allRequested)
 
 		let nonce = try #require(
-			signer.testRetrieveNonceForOrigin(url: URL(string: issuer)!)
+			signer.testRetrieveNonceForOrigin(url: URL(string: "https://as.example")!)
 		)
 		#expect(nonce.nonce == "test-nonce-2")
 
@@ -508,7 +505,6 @@ struct DPoPSignerRequestTests {
 		// which returns a DPoP Error Response body, with a DPoP-Nonce header. The
 		// request is then retried with the supplied DPoP-Nonce header value, and
 		// succeeds.
-		let issuer = "https://as.example"
 		let requestedURL = URL(string: "https://as.example/oauth/token")!
 		let request = URLRequest(url: requestedURL)
 
@@ -543,7 +539,7 @@ struct DPoPSignerRequestTests {
 			using: genericJWTGenerator(),
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: issuer,
+			isAuthServer: true,
 			responseProvider: mockLoader.responseProvider
 		)
 
@@ -551,7 +547,7 @@ struct DPoPSignerRequestTests {
 		#expect(mockLoader.requests.count == 1)
 
 		let nonce = try #require(
-			signer.testRetrieveNonceForOrigin(url: URL(string: issuer)!)
+			signer.testRetrieveNonceForOrigin(url: URL(string: "https://as.example")!)
 		)
 		#expect(nonce.nonce == "test-nonce-1")
 
@@ -566,7 +562,6 @@ struct DPoPSignerRequestTests {
 		// We are making a request against an Authorization Server (the issuer),
 		// which succeed with a DPoP-Nonce header. Then we request against a
 		// resource server which succeeds.
-		let issuer = "https://as.example/"
 		let asRequestUrl = URL(string: "https://as.example/oauth/token")!
 		let asRequest = URLRequest(url: asRequestUrl)
 
@@ -630,7 +625,7 @@ struct DPoPSignerRequestTests {
 			using: tokenGenerator,
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: issuer,
+			isAuthServer: true,
 			responseProvider: mockLoader.responseProvider
 		)
 
@@ -646,7 +641,7 @@ struct DPoPSignerRequestTests {
 			using: tokenGenerator,
 			token: "test-token",
 			tokenHash: "test-abc123",
-			issuingServer: issuer,
+			isAuthServer: false,
 			responseProvider: mockLoader.responseProvider
 		)
 
