@@ -196,22 +196,23 @@ public enum Bluesky {
 				throw AuthenticatorError.unrecognizedError(tokenError.errorDescription)
 			}
 
+			let tokenResponse: TokenResponse
 			do {
-				let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-				guard tokenResponse.token_type == "DPoP" else {
-					throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
-				}
-				
-				if try await validator(tokenResponse, server.issuer) == false {
-					throw AuthenticatorError.tokenInvalid
-				}
-				
-				return tokenResponse.login(for: iss)
+				tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
 			} catch {
 				Self.logger.error(
-				  "Error decoding response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
+					"Error decoding response: \(String(decoding: data, as: UTF8.self), privacy: .public)")
 				throw AuthenticatorError.unrecognizedError("Decoding response JSON")
 			}
+			guard tokenResponse.token_type == "DPoP" else {
+				throw AuthenticatorError.dpopTokenExpected(tokenResponse.token_type)
+			}
+			
+			if try await validator(tokenResponse, server.issuer) == false {
+				throw AuthenticatorError.tokenInvalid
+			}
+			
+			return tokenResponse.login(for: iss)
 		}
 	}
 
