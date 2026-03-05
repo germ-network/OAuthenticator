@@ -180,29 +180,35 @@ public actor Authenticator {
 
 		switch action {
 		case .authorize:
-			let newLogin = try await loginFromTask(task: Task {
-				return try await performUserAuthentication(manual: false, userAuthenticator: userAuthenticator)
-			})
+			let newLogin = try await loginFromInflightOrNew {
+				Task {
+					try await performUserAuthentication(manual: false, userAuthenticator: userAuthenticator)
+				}
+			}
 
 			return try await authedResponse(for: request, login: newLogin)
 		case .refresh:
-			let newLogin = try await loginFromTask(task: Task {
-				guard let value = try await refresh(with: login) else {
-					throw AuthenticatorError.unauthorizedRefreshFailed
-				}
+			let newLogin = try await loginFromInflightOrNew {
+				Task {
+					guard let value = try await refresh(with: login) else {
+						throw AuthenticatorError.unauthorizedRefreshFailed
+					}
 
-				return value
-			})
+					return value
+				}
+			}
 
 			return try await authedResponse(for: request, login: newLogin)
 		case .refreshOrAuthorize:
-			let newLogin = try await loginFromTask(task: Task {
-				if let value = try await refresh(with: login) {
-					return value
-				}
+			let newLogin = try await loginFromInflightOrNew {
+				Task {
+					if let value = try await refresh(with: login) {
+						return value
+					}
 
-				return try await performUserAuthentication(manual: false, userAuthenticator: userAuthenticator)
-			})
+					return try await performUserAuthentication(manual: false, userAuthenticator: userAuthenticator)
+				}
+			}
 
 			return try await authedResponse(for: request, login: newLogin)
 		case .valid:
@@ -277,53 +283,57 @@ extension Authenticator {
 			return try await performUserAuthentication(manual: manual, userAuthenticator: userAuthenticator)
 		}
 	}
-
-	private func loginTaskResult(manual: Bool, userAuthenticator: @escaping UserAuthenticator) async throws -> Login {
-		let task = activeTokenTask ?? makeLoginTask(manual: manual, userAuthenticator: userAuthenticator)
-
+	
+	private func loginTaskResult(
+		manual: Bool,
+		userAuthenticator: @escaping UserAuthenticator
+	) async throws -> Login {
 		var login: Login
 		do {
-				do {
-						login = try await loginFromTask(task: task)
-				} catch AuthenticatorError.tokenInvalid {
-						let newTask = makeLoginTask(manual: manual, userAuthenticator: userAuthenticator)
-						login = try await loginFromTask(task: newTask)
+			do {
+				
+				login = try await loginFromInflightOrNew {
+					makeLoginTask(manual: manual, userAuthenticator: userAuthenticator)
 				}
-
-				// Inform authenticationResult closure of new login information
-				await self.config.authenticationStatusHandler?(.success(login))
+			} catch AuthenticatorError.tokenInvalid {
+				login = try await loginFromInflightOrNew {
+					makeLoginTask(manual: manual, userAuthenticator: userAuthenticator)
+				}
+			}
+			// Inform authenticationResult closure of new login information
+			await self.config.authenticationStatusHandler?(.success(login))
+		} catch let authenticatorError as AuthenticatorError {
+			await self.config.authenticationStatusHandler?(.failure(authenticatorError))
+			
+			// Rethrow error
+			throw authenticatorError
 		}
-		catch let authenticatorError as AuthenticatorError {
-				await self.config.authenticationStatusHandler?(.failure(authenticatorError))
-
-				// Rethrow error
-				throw authenticatorError
-		}
-
+		
 		return login
 	}
 
-	private func loginFromTask(task: Task<Login, Error>) async throws -> Login {
-		self.activeTokenTask = task
-
-		let login: Login
-
-		do {
-			login = try await task.value
-		} catch {
-			// clear this value on error, but only if has not changed
-			if task == self.activeTokenTask {
-				self.activeTokenTask = nil
+	//we don't want to generate a new task to mutate remote refresh state
+	//if we already have an active task
+	//this should exit with a nil activeTokenTask so we can retry with a fresh
+	//task
+	private func loginFromInflightOrNew(taskGenerator: () -> Task<Login, Error>) async throws -> Login {
+		if let activeTokenTask {
+			return try await activeTokenTask.value
+		} else {
+			let newTask = taskGenerator()
+			self.activeTokenTask = newTask
+			
+			defer {
+				if newTask == activeTokenTask {
+					activeTokenTask = nil
+				}
 			}
-
-			throw error
+			let resultingLogin = try await newTask.value
+			guard resultingLogin.accessToken.valid else {
+				throw AuthenticatorError.tokenInvalid
+			}
+			return resultingLogin
 		}
-
-		guard login.accessToken.valid else {
-			throw AuthenticatorError.tokenInvalid
-		}
-
-		return login
 	}
 
 	private func performUserAuthentication(manual: Bool, userAuthenticator: UserAuthenticator) async throws -> Login {
@@ -338,20 +348,20 @@ extension Authenticator {
 			pcke: config.tokenHandling.pkce,
 			parRequestURI: parRequestURI,
 			stateToken: stateToken,
-			responseProvider: { try await self.dpopResponse(for: $0, login: nil) }
+			responseProvider: { try await self.dpopResponse(for: $0, login: nil, isAuthServer: true) }
 		)
 
 		let tokenURL = try await config.tokenHandling.authorizationURLProvider(authConfig)
 
 		let scheme = try config.appCredentials.callbackURLScheme
 
-		let	callbackURL = try await userAuthenticator(tokenURL, scheme)
+		let callbackURL = try await userAuthenticator(tokenURL, scheme)
 
 		let params = TokenHandling.LoginProviderParameters(
 			authorizationURL: tokenURL,
 			credentials: config.appCredentials,
 			redirectURL: callbackURL,
-			responseProvider: { try await self.dpopResponse(for: $0, login: nil) },
+			responseProvider: { try await self.dpopResponse(for: $0, login: nil, isAuthServer: true) },
 			stateToken: stateToken,
 			pcke: config.tokenHandling.pkce
 		)
@@ -377,7 +387,11 @@ extension Authenticator {
 		}
 
 		do {
-			let login = try await refreshProvider(login, config.appCredentials, { try await self.dpopResponse(for: $0, login: nil) })
+			let login = try await refreshProvider(
+				login, config.appCredentials,
+				{
+					try await self.dpopResponse(for: $0, login: nil, isAuthServer: true)
+				})
 
 			try await storeLogin(login)
 
@@ -395,7 +409,7 @@ extension Authenticator {
 		}
 
 		let challenge = pkce.challenge
-		let scopes = config.appCredentials.scopes.joined(separator: " ")
+		let scopes = config.appCredentials.scopeString
 		let callbackURI = config.appCredentials.callbackURL
 		let clientId = config.appCredentials.clientId
 
@@ -421,7 +435,7 @@ extension Authenticator {
 
 		request.httpBody = Data(body.utf8)
 
-		let (parData, _) = try await dpopResponse(for: request, login: nil)
+		let (parData, _) = try await self.dpopResponse(for: request, login: nil, isAuthServer: true)
 
 		return try JSONDecoder().decode(PARResponse.self, from: parData)
 	}
@@ -442,7 +456,31 @@ extension Authenticator {
 		{ try await self.response(for: $0) }
 	}
 
-	private func dpopResponse(for request: URLRequest, login: Login?) async throws -> (Data, URLResponse) {
+	private func dpopResponse(for request: URLRequest, login: Login?) async throws -> (
+		Data, URLResponse
+	) {
+		var issuer: String? = nil
+		if let iss = login?.issuingServer {
+			issuer = URL(string: iss)?.origin
+		}
+
+		guard let requestOrigin = request.url?.origin else {
+			throw DPoPError.requestInvalid(request)
+		}
+
+		let isAuthServer = issuer == nil || issuer == requestOrigin
+
+		return try await dpopResponse(
+			for: request,
+			login: login,
+			isAuthServer: isAuthServer
+		)
+	}
+
+	private func dpopResponse(for request: URLRequest, login: Login?, isAuthServer: Bool?)
+		async throws -> (Data, URLResponse)
+	{
+		print("Request: \(request.httpMethod!) - \(request.url?.absoluteString ?? "missing url")")
 		guard let generator = config.tokenHandling.dpopJWTGenerator else {
 			return try await urlLoader(request)
 		}
@@ -460,8 +498,8 @@ extension Authenticator {
 			using: generator,
 			token: token,
 			tokenHash: tokenHash,
-			issuingServer: login?.issuingServer,
-			provider: urlLoader
+			isAuthServer: isAuthServer,
+			responseProvider: urlLoader
 		)
 	}
 }
