@@ -41,15 +41,24 @@ public struct Login: Codable, Hashable, Sendable {
 	public var accessToken: Token
 	public var refreshToken: Token?
 
-  // User authorized scopes
-  public var scopes: String?
+	// User authorized scopes
+	public var scopes: String?
 	public var issuingServer: String?
+	
+	public var additionalParams: [String: String]?
 
-  public init(accessToken: Token, refreshToken: Token? = nil, scopes: String? = nil, issuingServer: String? = nil) {
+	public init(
+		accessToken: Token,
+		refreshToken: Token? = nil,
+		scopes: String? = nil,
+		issuingServer: String? = nil,
+		additionalParams: [String: String]? = nil,
+	) {
 		self.accessToken = accessToken
 		self.refreshToken = refreshToken
 		self.scopes = scopes
 		self.issuingServer = issuingServer
+		self.additionalParams = additionalParams
 	}
 
 	public init(token: String, validUntilDate: Date? = nil) {
@@ -207,6 +216,7 @@ public struct TokenHandling: Sendable {
 			throw AuthenticatorError.httpResponseExpected
 		}
 
+		// FIXME: This isn't really to spec: 401 doesn't mean "refresh", it just means unauthorized.
 		if response.statusCode == 401 {
 			return .refresh
 		}

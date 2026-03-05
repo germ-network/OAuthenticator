@@ -553,7 +553,7 @@ struct AuthenticatorTests {
 		#expect(events1 == expected1)
 
 		// Let the token expire
-		try await Task.sleep(for: .seconds(5))
+		try await Task.sleep(for: .seconds(20))
 
 		let (_, _) = try await auth.response(for: URLRequest(url: URL(string: "https://example.com")!))
 		continuation.checkpoint()
