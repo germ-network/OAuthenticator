@@ -287,8 +287,8 @@ extension Authenticator {
 	//this should exit with a nil activeTokenTask so we can retry with a fresh
 	//task
 	private func loginFromInflightOrNew(taskGenerator: () -> Task<Login, Error>) async throws -> Login {
-		if let existingTask = activeTokenTask {
-			return try await existingTask.value
+		if let activeTokenTask {
+			return try await activeTokenTask.value
 		} else {
 			let newTask = taskGenerator()
 			self.activeTokenTask = newTask
